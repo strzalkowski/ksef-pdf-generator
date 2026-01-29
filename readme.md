@@ -12,8 +12,9 @@ A command-line tool for generating PDF visualizations of KSeF invoices and UPO d
 - [Building Standalone Executables](#building-standalone-executables)
 - [Automated Releases & Distribution](#automated-releases--distribution)
 - [Backend Integration](#backend-integration)
-    - [Option 1: HTTP Server](#option-1-http-server-new)
-    - [Option 2: Standalone Executable](#option-2-standalone-executable-recommended)
+    - [Option 1: HTTP Server](#option-1-http-server)
+    - [Option 2: Docker Image](#option-2-docker-image)
+    - [Option 3: Standalone Executable](#option-3-standalone-executable-recommended)
 - [Testing Your Installation](#testing-your-installation)
 - [Troubleshooting](#troubleshooting)
 
@@ -27,7 +28,17 @@ The standalone executable includes Node.js runtime and all dependencies bundled 
 
 Uses **Node.js Single Executable Applications (SEA)** - the official built-in feature for creating standalone executables.
 
-#### Build from Source
+#### Download from GitHub Releases (Recommended)
+
+1. Go to [Releases](https://github.com/Michal-Dudzik/ksef-pdf-generator/releases/latest)
+2. Download `ksef-pdf-generator.exe` from the latest release
+3. Use it directly (no installation required):
+
+```batch
+ksef-pdf-generator.exe -i invoice.xml -o invoice.pdf -t invoice
+```
+
+#### Or Build from Source
 
 If you cloned this repository:
 
@@ -314,7 +325,27 @@ curl -X POST http://localhost:3000/generate/upo \
 
 ---
 
-### Option 2: Standalone Executable (Recommended)
+### Option 2: Docker Image
+
+You can also run the server using Docker. This is the easiest way to deploy it on any platform.
+
+#### Building the Image
+
+```bash
+docker build -t ksef-pdf-generator .
+```
+
+#### Running the Container
+
+```bash
+docker run -p 3000:3000 ksef-pdf-generator
+```
+
+The server will be available at `http://localhost:3000`.
+
+---
+
+### Option 3: Standalone Executable (Recommended)
 
 The standalone executable can be called from any backend without Node.js:
 
