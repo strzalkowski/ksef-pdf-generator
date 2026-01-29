@@ -1,7 +1,5 @@
 # KSeF PDF Generator - CLI Tool
 
-[![Download Latest](https://img.shields.io/github/v/release/Michal-Dudzik/ksef-pdf-generator?label=Download%20Latest&style=for-the-badge&logo=github)](https://github.com/Michal-Dudzik/ksef-pdf-generator/releases/latest)
-
 A command-line tool for generating PDF visualizations of KSeF invoices and UPO documents from XML files.
 
 ## Table of Contents
@@ -14,6 +12,8 @@ A command-line tool for generating PDF visualizations of KSeF invoices and UPO d
 - [Building Standalone Executables](#building-standalone-executables)
 - [Automated Releases & Distribution](#automated-releases--distribution)
 - [Backend Integration](#backend-integration)
+    - [Option 1: HTTP Server](#option-1-http-server-new)
+    - [Option 2: Standalone Executable](#option-2-standalone-executable-recommended)
 - [Testing Your Installation](#testing-your-installation)
 - [Troubleshooting](#troubleshooting)
 
@@ -27,17 +27,7 @@ The standalone executable includes Node.js runtime and all dependencies bundled 
 
 Uses **Node.js Single Executable Applications (SEA)** - the official built-in feature for creating standalone executables.
 
-#### Download from GitHub Releases (Recommended)
-
-1. Go to [Releases](https://github.com/Michal-Dudzik/ksef-pdf-generator/releases/latest)
-2. Download `ksef-pdf-generator.exe` from the latest release
-3. Use it directly (no installation required):
-
-```batch
-ksef-pdf-generator.exe -i invoice.xml -o invoice.pdf -t invoice
-```
-
-#### Or Build from Source
+#### Build from Source
 
 If you cloned this repository:
 
@@ -281,14 +271,6 @@ git push origin v0.0.38
 4. Click **"Run workflow"** button
 5. Select branch and click **"Run workflow"**
 
-### Downloading Releases
-
-#### For End Users
-
-```
-https://github.com/Michal-Dudzik/ksef-pdf-generator/releases/latest
-```
-
 ### What's Included in Each Release
 
 Every GitHub Release contains:
@@ -306,7 +288,59 @@ Every GitHub Release contains:
 
 ## Backend Integration
 
-### Using Standalone Executable (Recommended)
+### Option 1: HTTP Server
+
+The project now includes a built-in HTTP server for easy integration via REST API.
+
+#### Running the Server
+
+```bash
+# Build the project
+npm run build
+
+# Start the server (default port: 3000)
+npm run server
+```
+
+#### API Endpoints
+
+##### 1. Generate Invoice PDF
+`POST /generate/invoice` (multipart/form-data)
+
+**Parameters:**
+- `xml` (file, required): The KSeF XML invoice file.
+- `nrKSeF` (string, optional): KSeF number.
+- `qrCode1` (string, optional): Main QR code data.
+- `qrCode2` (string, optional): Certificate QR code data.
+- `simplified` (boolean string "true"/"false", optional): Generate simplified PDF.
+- `mergePdf` (file, optional): Existing PDF to merge with (requires simplified=true).
+
+**Example (cURL):**
+```bash
+curl -X POST http://localhost:3000/generate/invoice \
+  -F "xml=@invoice.xml" \
+  -F "nrKSeF=5265877635-20250808-9231003CA67B-BE" \
+  -F "qrCode1=https://ksef.mf.gov.pl/..."
+```
+
+##### 2. Generate UPO PDF
+`POST /generate/upo` (multipart/form-data)
+
+**Parameters:**
+- `xml` (file, required): The UPO XML file.
+
+**Example (cURL):**
+```bash
+curl -X POST http://localhost:3000/generate/upo \
+  -F "xml=@upo.xml"
+```
+
+##### 3. Health Check
+`GET /health`
+
+---
+
+### Option 2: Standalone Executable (Recommended)
 
 The standalone executable can be called from any backend without Node.js:
 
