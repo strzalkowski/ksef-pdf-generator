@@ -1,0 +1,12 @@
+﻿node_modules
+dist
+logs
+outputs
+tests
+.git
+.gitignore
+.idea
+.vscode
+*.md
+LICENSE
+package-lock.json
