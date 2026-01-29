@@ -12,9 +12,8 @@ A command-line tool for generating PDF visualizations of KSeF invoices and UPO d
 - [Building Standalone Executables](#building-standalone-executables)
 - [Automated Releases & Distribution](#automated-releases--distribution)
 - [Backend Integration](#backend-integration)
-    - [Option 1: HTTP Server](#option-1-http-server)
-    - [Option 2: Docker Image](#option-2-docker-image)
-    - [Option 3: Standalone Executable](#option-3-standalone-executable-recommended)
+    - [Option 1: HTTP Server](#option-1-http-server-new)
+    - [Option 2: Standalone Executable](#option-2-standalone-executable-recommended)
 - [Testing Your Installation](#testing-your-installation)
 - [Troubleshooting](#troubleshooting)
 
@@ -28,17 +27,7 @@ The standalone executable includes Node.js runtime and all dependencies bundled 
 
 Uses **Node.js Single Executable Applications (SEA)** - the official built-in feature for creating standalone executables.
 
-#### Download from GitHub Releases (Recommended)
-
-1. Go to [Releases](https://github.com/Michal-Dudzik/ksef-pdf-generator/releases/latest)
-2. Download `ksef-pdf-generator.exe` from the latest release
-3. Use it directly (no installation required):
-
-```batch
-ksef-pdf-generator.exe -i invoice.xml -o invoice.pdf -t invoice
-```
-
-#### Or Build from Source
+#### Build from Source
 
 If you cloned this repository:
 
@@ -325,27 +314,7 @@ curl -X POST http://localhost:3000/generate/upo \
 
 ---
 
-### Option 2: Docker Image
-
-You can also run the server using Docker. This is the easiest way to deploy it on any platform.
-
-#### Building the Image
-
-```bash
-docker build -t ksef-pdf-generator .
-```
-
-#### Running the Container
-
-```bash
-docker run -p 3000:3000 ksef-pdf-generator
-```
-
-The server will be available at `http://localhost:3000`.
-
----
-
-### Option 3: Standalone Executable (Recommended)
+### Option 2: Standalone Executable (Recommended)
 
 The standalone executable can be called from any backend without Node.js:
 
@@ -517,9 +486,6 @@ Using the example files:
 ```batch
 # For invoice
 bin\ksef-pdf-generator.exe -i assets\invoice.xml -o test_invoice.pdf -t invoice
-
-# For advanced invoice test (max coverage)
-node dist/cli.cjs --input assets/invoice-max-coverage.xml --output outputs/test_max_cov.pdf --type invoice -nrKSeF "4342534586-20251103-s0cOP4pbUBZPye4" --qrCode1 "https://ksef-test.mf.gov.pl/client-app/invoice/4342534586/03-11-2025/s0cOP4pbUBZPye4NePFHq8AiEEbxz_JttFipc16seCU%22"
 
 # For UPO
 bin\ksef-pdf-generator.exe -i assets\upo.xml -o test_upo.pdf -t upo
