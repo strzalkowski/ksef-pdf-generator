@@ -1,0 +1,77 @@
+﻿name: Build NuGet Package
+
+on:
+  push:
+    tags:
+      - "nuget-v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  nuget:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        dotnet-version: [10.0]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+
+      - name: Determine tag
+        id: tag
+        shell: pwsh
+        run: |
+          $fullTag = "${{ github.ref_name }}"
+          $tag = $fullTag -replace "^nuget-", ""
+          echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Using tag: $tag"
+
+      - name: Download EXE from Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.tag.outputs.TAG }}"
+          mkdir bin -Force
+          try {
+              gh release download $tag --pattern "ksef-pdf-generator.exe" --dir "./bin"
+              Write-Host "EXE downloaded successfully from release $tag."
+          } catch {
+              Write-Host "ERROR: EXE not found in release $tag. Stopping workflow."
+              exit 1
+          }
+
+      - name: Get version from package.json
+        id: package-version
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Using version: $version"
+
+      - name: Pack NuGet Package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.package-version.outputs.VERSION }}"
+          dotnet pack KSeF.Pdf.Generator.csproj `
+            -c Release `
+            -o ./dist-nuget `
+            /p:PackageVersion=$version
+
+      - name: Publish NuGet Package
+        shell: pwsh
+        run: |
+          $packageFile = Get-ChildItem -Path "dist-nuget/*.nupkg" | Select-Object -First 1 -ExpandProperty FullName
+          dotnet nuget push "$packageFile" `
+            --api-key ${{ secrets.GITHUB_TOKEN }} `
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" `
+            --skip-duplicate
