@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <PackageId>KSeF.Pdf.Generator</PackageId>
+    <Version>$(PackageVersion)</Version>
+    <Authors>Konrad Strzałkowski</Authors>
+    <Description>Standalone CLI tool for generating PDF from KSeF XML files.</Description>
+    <PackageSummary>CLI tool that converts KSeF XML documents into PDF files.</PackageSummary>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>ksef;pdf;cli;dotnet;invoice</PackageTags>
+    <RepositoryUrl>https://github.com/strzalkowski/ksef-pdf-generator</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/strzalkowski/ksef-pdf-generator</PackageProjectUrl>
+
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="bin/ksef-pdf-generator.exe"
+          Pack="true"
+          PackagePath="contentFiles/any/any/;tools/"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  
+</Project>
