@@ -129,6 +129,44 @@ describe('generateFA2', () => {
     expect(generatePodsumowanieStawekPodatkuVat).not.toHaveBeenCalled();
   });
 
+  describe('PDF metadata (info field)', () => {
+    it('passes title, author and keywords derived from invoice data', () => {
+      const invoice: Faktura = {
+        Podmiot1: {
+          DaneIdentyfikacyjne: {
+            Nazwa: { _text: 'Sprzedawca FA2 S.A.' },
+            NIP: { _text: '1234512345' },
+          },
+        },
+        Podmiot2: {
+          DaneIdentyfikacyjne: {
+            NIP: { _text: '9876598765' },
+          } as any,
+        },
+        Fa: { RodzajFaktury: { _text: 'KOR' } },
+        Stopka: {},
+        Naglowek: {},
+      } as any;
+
+      const additionalData: AdditionalDataTypes = { nrKSeF: 'KOR-NR-KSEF' };
+      const createPdfSpy = vi.spyOn(pdfMake, 'createPdf').mockReturnValue(mockCreatePdfReturn as any);
+
+      generateFA2(invoice, additionalData);
+
+      expect(createPdfSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          info: expect.objectContaining({
+            title: 'Faktura KOR KOR-NR-KSEF',
+            author: 'Sprzedawca FA2 S.A.',
+            keywords: '',
+            creator: expect.stringMatching(/^ksef-pdf-generator\//),
+            producer: expect.stringMatching(/^ksef-pdf-generator\//),
+          }),
+        })
+      );
+    });
+  });
+
   it('passes watermark configuration to pdfMake', () => {
     const invoice: Faktura = {
       Fa: {

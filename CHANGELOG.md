@@ -2,6 +2,99 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-06-11
+
+### Changed
+
+- Synced selected upstream `1.1.18` changes from commits `42508b9ac46d52077333d1d47c6c01ca10233193` and `8264d23959cc1870056f3585d2986f6b61a022c5`.
+- Removed implicit `Brak zapłaty` rendering from FA1, FA2, and FA3 payment sections when the XML does not explicitly mark the invoice as paid or partially paid.
+- VAT summaries for FA1, FA2, and FA3 now render rows for zero-valued tax fields when those fields are present in the XML.
+- Correction invoices (`KOR`, `KOR_ROZ`) now use a dedicated `Korekta kwoty należności ogółem` label for `P_15`.
+- Bank account formatting now preserves account numbers that are already formatted with spaces.
+
+### Added
+
+- Added an executable integration plan for the upstream `1.1.18` sync in `docs/UPSTREAM_1_1_18_INTEGRATION_PLAN.md`.
+- Added regression tests for implicit payment status rendering, zero-valued VAT summary rows, corrected `P_15` labels, and already-formatted bank account numbers.
+
+## [1.5.0] - 2026-06-03
+
+### Added
+
+- Synced upstream changes `1.1.16` / `1.1.16 HF1`:
+  - Added the generator application/version label to invoice technical information.
+  - Added `technicalInfo.app_version` in `parameters.ini` and CLI config handling to control that version label independently from `technicalInfo.generated_in`.
+- Updated `pdfmake` to `0.3.7` and migrated PDF generation to the new font-registration and promise-based output APIs.
+
+### Fixed
+
+- Fixed UPO 4.2 PDF generation to use UPO 4.2 types and UPO 4.2 document/header generators instead of the UPO 4.3 implementation.
+- Fixed unsupported invoice XML versions to fail with an explicit `Unknown XML Version` error.
+- Fixed invoice row `KwotaAkcyzy` formatting in FA1, FA2, and FA3 so it renders as currency.
+- Split the technical information application and PDF generator version details into separate lines.
+
+## [1.4.1] - 2026-05-22
+
+### Fixed
+
+- Prevented empty PDF sections from adding default bottom margin when `createSection(...)` receives no content, avoiding layout shifts and potential blank pages.
+- Prevented the invoice footer from rendering spacer-only or empty QR blocks when no footer section has renderable data, including invoices with attachments and no `SystemInfo`.
+
+## [1.4.0] - 2026-05-22
+
+### Added
+
+- Implemented changes from upstream release 1.1.12
+  - Added bank account number formatting for FA2, FA3, and FA_RR invoice PDFs, grouping long account numbers for readability.
+
+## [1.3.0] - 2026-05-18
+
+### Added
+
+- Added a `Technical information` section for invoice PDFs, including the existing generated-in system value and optional `AcquisitionDate` rendering when present in the XML and controllable via parameters file.
+
+## [1.2.0] - 2026-05-12
+
+### Added
+
+- PDF file metadata is now embedded in every generated invoice PDF:
+  - **Title** — set to `Faktura {RodzajFaktury} {NrKSeF}`, e.g. `Faktura VAT 20260101-SE-1234567890-ABC`
+  - **Author** — set to the seller's full name or company name from Podmiot1 (for FA_RR: the issuing VAT taxpayer from Podmiot1)
+  - **Keywords** — a comma-separated list of all unique tax and entity identifiers found in the XML (NIP, NrVatUE, NrID, IDWewn/IDWew, PESEL, NrEORI) across all parties: Podmiot1, Podmiot2, Podmiot3, and PodmiotUpoważniony
+  - **Creator / Producer** — changed from `pdfmake` to `ksef-pdf-generator/{version}`, enabling unambiguous identification of the generating application and its version in PDF viewers and diagnostic reports
+
+## [1.1.3] - 2026-05-11
+
+### Added
+
+- Added support for language selection to the CLI
+
+## [1.1.2] - 2026-05-08
+
+### Fixed
+
+- more old tests
+
+## [1.1.1] - 2026-05-08
+
+### Fixed
+
+- Fixed some old translation tests for English language
+
+## [1.1.0] - 2026-05-08
+
+### Added
+
+- internationalization logic with Polish and English translations (changes from the update 1.1.9 from upstream repository)
+
+### Fixed
+
+- Synced selected upstream `1.1.11` changes from commit `153a7535d6c5d502f9ab83d108fc60555e389484`
+- Fixed `P_6` label detection in `FA1`, `FA2`, and `FA3` details generators to resolve invoice type from object values via `getValue(...)`
+- Updated `P_6` label tests in `FA1`, `FA2`, and `FA3` to mock `getValue(...)` for object-backed values (`{ _text: ... }`)
+- Switched UPO context NIP label lookup from `invoice.subjectIdentificationData.nip` to `invoice.upo.nip` in `UPO4_2` and `UPO4_3`
+- Added missing `invoice.upo.nip` translation key to both Polish and English language files
+
 ## [1.0.1] - 2026-04-14
 
 ### Changed

@@ -19,14 +19,21 @@ import { Zalacznik } from '../../types/fa3.types';
 import { generateZalaczniki } from './Zalaczniki';
 import FormatTyp from '../../../shared/enums/common.enum';
 import { Informacje, Rejestry } from '../../types/fa1.types';
-import { AdditionalDataTypes } from '../../types/common.types';
+import { AdditionalDataTypes, TechnicalInfoConfig } from '../../types/common.types';
+import { createApplicationLabel, createVersionLabel } from '../../../shared/generators/common/functions';
+import i18n from 'i18next';
+
+interface TechnicalInformationContext {
+  acquisitionDate?: FP;
+}
 
 export function generateStopka(
   additionalData?: AdditionalDataTypes,
   stopka?: Stopka,
   naglowek?: Naglowek,
   wz?: FP[],
-  zalacznik?: Zalacznik
+  zalacznik?: Zalacznik,
+  technicalInformationContext?: TechnicalInformationContext
 ): Content[] {
   if (additionalData?.simplifiedMode) {
     return generateQRCodeData(additionalData);
@@ -37,34 +44,110 @@ export function generateStopka(
   const informacje: Content[] = generateInformacje(stopka);
   const qrCode: Content[] = generateQRCodeData(additionalData);
   const zalaczniki: Content[] = !additionalData?.isMobile ? generateZalaczniki(zalacznik) : [];
+  const technicalInformation: Content[] = generateTechnicalInformation(additionalData, {
+    ...technicalInformationContext,
+    systemInfo: naglowek?.SystemInfo,
+  });
 
-  const result: Content = [
-    verticalSpacing(1),
+  const result: Content[] = [
     ...(wzty.length ? [generateLine()] : []),
     ...(wzty.length ? [generateTwoColumns(wzty, [])] : []),
     ...(rejestry.length || informacje.length ? [generateLine()] : []),
     ...rejestry,
     ...informacje,
     ...(zalaczniki.length ? zalaczniki : []),
-    { stack: [...qrCode], unbreakable: true },
-    createSection(
-      [
-        {
-          stack: createLabelText('Wytworzona w: ', naglowek?.SystemInfo),
-          margin: [0, 8, 0, 0],
-        },
-      ],
-      true,
-      [0, 0, 0, 0]
-    ),
+    ...(qrCode.length ? [{ stack: [...qrCode], unbreakable: true } as Content] : []),
+    ...technicalInformation,
   ];
 
-  return createSection(result, false);
+  return createSection(result.length ? [verticalSpacing(1), ...result] : [], false);
+}
+
+interface TechnicalInformationField {
+  isEnabled: (config: NormalizedTechnicalInfoConfig) => boolean;
+  canRender: (context: TechnicalInformationContextWithSystemInfo) => boolean;
+  render: (context: TechnicalInformationContextWithSystemInfo) => Content[];
+}
+
+interface TechnicalInformationContextWithSystemInfo extends TechnicalInformationContext {
+  systemInfo?: FP;
+}
+
+type NormalizedTechnicalInfoConfig = Required<TechnicalInfoConfig>;
+
+function generateTechnicalInformation(
+  additionalData: AdditionalDataTypes | undefined,
+  context: TechnicalInformationContextWithSystemInfo
+): Content[] {
+  const config = normalizeTechnicalInfoConfig(additionalData?.technicalInfo);
+
+  if (!config.enabled) {
+    return [];
+  }
+
+  const fields: TechnicalInformationField[] = [
+    {
+      isEnabled: (normalizedConfig) => normalizedConfig.showGeneratedIn,
+      canRender: (fieldContext) => !!fieldContext.systemInfo?._text,
+      render: (fieldContext) =>
+        createLabelText(i18n.t('invoice.technicalInformation.generatedIn'), fieldContext.systemInfo),
+    },
+    {
+      isEnabled: (normalizedConfig) => normalizedConfig.showAppVersion,
+      canRender: () => true,
+      render: () => [
+        ...createLabelText(i18n.t('invoice.technicalInformation.appVersion'), createApplicationLabel()),
+        ...createLabelText(i18n.t('invoice.technicalInformation.generatorVersion'), createVersionLabel()),
+      ],
+    },
+    {
+      isEnabled: (normalizedConfig) => normalizedConfig.showAcquisitionDate,
+      canRender: (fieldContext) => !!fieldContext.acquisitionDate?._text,
+      render: (fieldContext) =>
+        createLabelText(
+          i18n.t('invoice.technicalInformation.acquisitionDate'),
+          fieldContext.acquisitionDate,
+          FormatTyp.DateTime
+        ),
+    },
+  ];
+
+  const content = fields.flatMap((field: TechnicalInformationField): Content[] =>
+    field.isEnabled(config) && field.canRender(context) ? field.render(context) : []
+  );
+
+  if (!content.length) {
+    return [];
+  }
+
+  return createSection(
+    [
+      ...createHeader(i18n.t('invoice.technicalInformation.header')),
+      {
+        stack: content,
+        margin: [0, 4, 0, 0],
+      },
+    ],
+    true,
+    [0, 0, 0, 0]
+  );
+}
+
+function normalizeTechnicalInfoConfig(config?: TechnicalInfoConfig): NormalizedTechnicalInfoConfig {
+  return {
+    ...config,
+    enabled: config?.enabled ?? true,
+    showGeneratedIn: config?.showGeneratedIn ?? true,
+    showAppVersion: config?.showAppVersion ?? true,
+    showAcquisitionDate: config?.showAcquisitionDate ?? true,
+  };
 }
 
 function generateWZ(wz?: FP[]): Content[] {
   const result: Content[] = [];
-  const definedHeader: HeaderDefine[] = [{ name: '', title: 'Numer WZ', format: FormatTyp.Default }];
+  const definedHeader: HeaderDefine[] = [
+    { name: '', title: i18n.t('invoice.wz.number'), format: FormatTyp.Default },
+  ];
   const faWiersze: FP[] = getTable(wz ?? []);
   const content: FormContentState = getContentTable<(typeof faWiersze)[0]>(
     [...definedHeader],
@@ -73,7 +156,7 @@ function generateWZ(wz?: FP[]): Content[] {
   );
 
   if (content.fieldsWithValue.length && content.content) {
-    result.push(createSubHeader('Numery dokumentów magazynowych WZ', [0, 8, 0, 4]));
+    result.push(createSubHeader(i18n.t('invoice.wz.documentsHeader'), [0, 8, 0, 4]));
     result.push(content.content);
   }
   return result;
@@ -82,7 +165,7 @@ function generateWZ(wz?: FP[]): Content[] {
 function generateRejestry(stopka?: Stopka): Content[] {
   const result: Content[] = [];
   const definedHeader: HeaderDefine[] = [
-    { name: 'PelnaNazwa', title: 'Pełna nazwa', format: FormatTyp.Default },
+    { name: 'PelnaNazwa', title: i18n.t('invoice.registers.fullName'), format: FormatTyp.Default },
     { name: 'KRS', title: 'KRS', format: FormatTyp.Default },
     { name: 'REGON', title: 'REGON', format: FormatTyp.Default },
     { name: 'BDO', title: 'BDO', format: FormatTyp.Default },
@@ -95,7 +178,7 @@ function generateRejestry(stopka?: Stopka): Content[] {
   );
 
   if (content.fieldsWithValue.length && content.content) {
-    result.push(createHeader('Rejestry'));
+    result.push(createHeader(i18n.t('invoice.registers.header')));
     result.push(content.content);
   }
   return result;
@@ -104,7 +187,7 @@ function generateRejestry(stopka?: Stopka): Content[] {
 function generateInformacje(stopka?: Stopka): Content[] {
   const result: Content[] = [];
   const definedHeader: HeaderDefine[] = [
-    { name: 'StopkaFaktury', title: 'Stopka faktury', format: FormatTyp.Default },
+    { name: 'StopkaFaktury', title: i18n.t('invoice.information.invoiceFooter'), format: FormatTyp.Default },
   ];
   const faWiersze: Informacje[] = getTable(stopka?.Informacje ?? []);
   const content: FormContentState = getContentTable<(typeof faWiersze)[0]>(
@@ -114,7 +197,7 @@ function generateInformacje(stopka?: Stopka): Content[] {
   );
 
   if (content.fieldsWithValue.length && content.content) {
-    result.push(createHeader('Pozostałe informacje'));
+    result.push(createHeader(i18n.t('invoice.information.header')));
     result.push(content.content);
   }
   return result;
@@ -131,7 +214,7 @@ function generateQRCodeData(additionalData?: AdditionalDataTypes): Content[] {
   if (additionalData?.qrCode1 && additionalData.nrKSeF) {
     const qrCode: ContentQr | undefined = generateQRCode(additionalData.qrCode1, qrCodeSize);
 
-    result.push(createHeader('Sprawdź, czy Twoja faktura znajduje się w KSeF!'));
+    result.push(createHeader(i18n.t('invoice.qr1.header')));
     if (qrCode) {
       qrCode1Stack = [
         qrCode,
@@ -170,7 +253,7 @@ function generateQRCodeData(additionalData?: AdditionalDataTypes): Content[] {
       qrCode2Stack = [
         certQrCode,
         {
-          text: 'CERTYFIKAT',
+          text: i18n.t('invoice.qr2.certificate'),
           alignment: 'center',
           fontSize: 10,
           margin: [0, 10, 0, 0],
@@ -180,7 +263,7 @@ function generateQRCodeData(additionalData?: AdditionalDataTypes): Content[] {
         stack: [
           certQrCode,
           {
-            text: 'CERTYFIKAT',
+            text: i18n.t('invoice.qr2.certificate'),
             alignment: 'center',
             fontSize: 10,
             margin: [0, 10, 0, 0],
@@ -225,10 +308,7 @@ function generateQRCodeData(additionalData?: AdditionalDataTypes): Content[] {
     verificationLinkText.marginTop = 5;
     result.push({
       stack: [
-        formatText(
-          'Nie możesz zeskanować kodu z obrazka? Kliknij w link weryfikacyjny i przejdź do weryfikacji faktury!',
-          FormatTyp.Value
-        ),
+        formatText(i18n.t('invoice.qr1.description'), FormatTyp.Value),
         verificationLinkText,
       ],
       margin: [0, 8, 0, 0],

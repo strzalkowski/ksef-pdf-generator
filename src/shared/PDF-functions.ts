@@ -13,11 +13,11 @@ import {
 import {
   DEFAULT_TABLE_LAYOUT,
   FormaPlatnosci,
+  Kraj,
   TStawkaPodatku_FA1,
   TStawkaPodatku_FA2,
   TStawkaPodatku_FA3,
 } from './consts/FA.const';
-import { Kraj } from './consts/const';
 import { TStawkaPodatku_FARR } from './consts/FARR.const';
 import { formatDateTimePl, formatTime, translateMap } from './generators/common/functions';
 import { HeaderDefine, PdfFP, PdfOptionField } from './types/pdf-types';
@@ -26,6 +26,7 @@ import { DifferentValues, FilteredKeysOfValues, TypesOfValues } from './types/un
 import { CreateLabelTextData } from './types/additional-data.types';
 import FormatTyp, { Answer, Position } from './enums/common.enum';
 import { getCurrencyThousandsSeparatorChar, shouldUseCurrencyThousandsSeparator } from './formatting-config';
+import i18n from 'i18next';
 
 const DEFAULT_NUMBER_DECIMALS = 2;
 const NUMBER_DECIMALS_ENV = 'KSEF_FORMAT_NUMBER_DECIMALS';
@@ -57,7 +58,9 @@ export function formatText(
   if (!value) {
     return '';
   }
-  const result: ContentText = { text: value.toString() };
+  const result: ContentText = {
+    text: value.toString(),
+  };
 
   Object.assign(result, options);
 
@@ -169,6 +172,9 @@ function formatValue(
       result.text = formatNumberByConfig(value);
       result.alignment = Position.RIGHT;
       break;
+    case FormatTyp.AccountNumber:
+      result.text = formatBankAccountNumber(value as string);
+      break;
   }
 }
 
@@ -228,9 +234,10 @@ function dotToComma(value: string): string {
   return value.replace('.', ',');
 }
 
-export function hasValue(value: FP | string | number | undefined): boolean {
+export function hasValue(value: FP | string | number | undefined, zeroValidator: boolean = true): boolean {
   return (
-    !!((typeof value !== 'object' && value) || (typeof value === 'object' && value._text)) || value === 0
+    !!((typeof value !== 'object' && value) || (typeof value === 'object' && value._text)) ||
+    (zeroValidator && value === 0)
   );
 }
 
@@ -270,6 +277,21 @@ export function createLabelTextArray(data: CreateLabelTextData[]): Content[] {
   ];
 }
 
+export function addThousandSeparator(
+  value: string,
+  thousandSeparator: string = ' ',
+  decimalSeparator: string = ','
+): string {
+  const splitRegex = /\B(?=(\d{3})+(?!\d))/g;
+  if (value.includes(decimalSeparator)) {
+    const splitIndex = value.indexOf(decimalSeparator);
+    const integerPart = value.slice(0, splitIndex);
+    const decimalPart = value.slice(splitIndex + decimalSeparator.length);
+    return `${integerPart.replace(splitRegex, thousandSeparator)}${decimalSeparator}${decimalPart}`;
+  } else {
+    return value.replace(splitRegex, thousandSeparator);
+  }
+}
 export function createLabelText(
   label: string,
   value: FP | string | number | undefined | null,
@@ -297,12 +319,15 @@ export function createLabelText(
 }
 
 export function createSection(content: Content[], isLineOnTop: boolean, margin?: Margins): Content[] {
+  if (!content.length) {
+    return [];
+  }
+
   return [
     {
       stack: [
-        ...(content.length
-          ? [...(isLineOnTop ? [{ stack: [generateLine()], margin: [0, 8, 0, 0] } as Content] : []), content]
-          : []),
+        ...(isLineOnTop ? [{ stack: [generateLine()], margin: [0, 8, 0, 0] } as Content] : []),
+        content,
       ],
       margin: margin ?? [0, 0, 0, 8],
     },
@@ -512,7 +537,7 @@ export function getContentTable<T>(
 
       return formatText(
         makeBreakable(
-          header.mappingData && value ? header.mappingData[value] : (value ?? ''),
+          header.mappingData && value ? translateMap(value, header.mappingData) : (value ?? ''),
           wordBreak ?? 40
         ),
         header.format ?? FormatTyp.Default,
@@ -616,7 +641,7 @@ export function verticalSpacing(height: number): ContentText {
 
 export function getKraj(kod: string): string {
   if (Kraj[kod]) {
-    return Kraj[kod];
+    return translateMap(kod, Kraj);
   }
   return kod;
 }
@@ -640,11 +665,11 @@ export function getTStawkaPodatku(code: string, version: 1 | 2 | 3 | 'RR', P_PMa
       break;
   }
   if (!normalizedCode && P_PMarzy === '1') {
-    return 'marża';
+    return i18n.t('invoice.summary.margin');
   }
 
   if (TStawkaPodatkuVersioned[normalizedCode]) {
-    return TStawkaPodatkuVersioned[normalizedCode];
+    return translateMap(normalizedCode, TStawkaPodatkuVersioned);
   }
   return normalizedCode || code;
 }
@@ -675,4 +700,29 @@ export function makeBreakable(
     return value.replace(new RegExp(`(.{${wordBreak}})`, 'g'), '$1\u200B');
   }
   return value;
+}
+
+function splitStringAfter(input: string, after: number): string[] {
+  return input.split('').reduce((acc: string[], char, index) => {
+    if (index % after === 0) {
+      acc.push('');
+    }
+    acc[acc.length - 1] += char;
+    return acc;
+  }, []);
+}
+
+export function formatBankAccountNumber(number: string): string {
+  if (typeof number !== 'string' || number.length === 0) return '';
+  if (number.length <= 12) return number;
+
+  if (/\s/.test(number.trim())) return number.trim();
+
+  const startsWithLetterOrSymbolRegex = /^[a-z!-\/:-@[-`{-~]/i;
+  if (number.charAt(0).match(startsWithLetterOrSymbolRegex)) {
+    return splitStringAfter(number.replace(/ /g, ''), 4).join(' ');
+  }
+
+  const firstTwoCharacters = number.substring(0, 2);
+  return `${firstTwoCharacters} ${splitStringAfter(number.substring(2).replace(/ /g, ''), 4).join(' ')}`;
 }

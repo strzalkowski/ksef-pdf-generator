@@ -15,8 +15,11 @@ import { generatePlatnosc } from './generators/FA_RR/Platnosc';
 import { generateStopka } from './generators/common/Stopka';
 import { Position } from '../shared/enums/common.enum';
 import { applyRuntimeFormattingConfig, resetRuntimeFormattingConfig } from '../shared/formatting-config';
+import { generateWatermark } from '../shared/consts/watermark';
+import { generatePdfInfo } from '../shared/pdf-metadata';
+import i18n from 'i18next';
 
-pdfMake.vfs = pdfFonts;
+pdfMake.addVirtualFileSystem(pdfFonts);
 
 export function generateFARR(invoice: FaRR, additionalData: AdditionalDataTypes): TCreatedPdf {
 
@@ -28,8 +31,11 @@ export function generateFARR(invoice: FaRR, additionalData: AdditionalDataTypes)
     }
     const fakturaRR = invoice.FakturaRR;
 
+    const sellerName = invoice.Podmiot1?.DaneIdentyfikacyjne?.Nazwa?._text;
+
     const docDefinition: TDocumentDefinitions = {
-      watermark: additionalData?.watermark,
+      ...generateWatermark(additionalData?.watermark),
+      info: generatePdfInfo(fakturaRR.RodzajFaktury?._text, additionalData.nrKSeF, sellerName),
       content: [
         ...generateNaglowek(fakturaRR, additionalData),
         generateDaneFaKorygowanej(fakturaRR),
@@ -43,7 +49,7 @@ export function generateFARR(invoice: FaRR, additionalData: AdditionalDataTypes)
       ],
       footer: (currentPage, pageCount) => {
         return {
-          text: currentPage.toString() + ' z ' + pageCount,
+          text: i18n.t('invoice.footer.pageOf', { current: currentPage, total: pageCount }),
           alignment: Position.RIGHT,
           margin: [0, 0, 40, 0],
         };

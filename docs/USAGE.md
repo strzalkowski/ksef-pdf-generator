@@ -13,7 +13,8 @@ This guide covers the main features, CLI options, common commands, configuration
 - text watermarks with configurable color, opacity, and angle
 - simplified invoice output
 - appending simplified output to an existing PDF
-- configurable decimal and currency formatting
+- configurable language, decimal formatting, and currency formatting
+- embedded PDF file metadata (title, author, keywords, application identity) for archiving and diagnostics
 
 ## Quick Start
 
@@ -51,6 +52,7 @@ bin\ksef-pdf-generator.bat -i assets\invoice.xml -o invoice.pdf -t invoice
 
 ### Invoice-only options
 
+- `--language`: generated PDF label language, either `pl` or `en`
 - `--nrKSeF`: KSeF number, or `OFFLINE` for offline invoices
 - `--watermark`, `--watermark-text`: watermark text
 - `--watermark-color`: watermark color such as `#cc0000` or `gray`
@@ -79,6 +81,7 @@ bin\ksef-pdf-generator.bat -i assets\invoice.xml -o invoice.pdf -t invoice
 
 ```batch
 bin\ksef-pdf-generator.exe -i invoice.xml -o invoice.pdf -t invoice ^
+  --language en ^
   --nrKSeF "5265877635-20250808-9231003CA67B-BE" ^
   --qrCode1 "https://ksef-test.mf.gov.pl/client-app/invoice/..."
 ```
@@ -135,6 +138,57 @@ bin\ksef-pdf-generator.exe -i invoice.xml -o invoice-merged.pdf -t invoice ^
 - If you pass watermark style options, you must also pass watermark text.
 - Watermark styling is rendered through `pdfmake`, so it appears on every page.
 
+## PDF File Metadata
+
+Every generated invoice PDF (FA1, FA2, FA3, FA_RR) automatically contains the following metadata fields, readable in any PDF viewer under the file properties dialog or via command-line tools:
+
+| Field | Value | Source |
+|---|---|---|
+| **Title** | `Faktura {RodzajFaktury} {NrKSeF}` | `Fa.RodzajFaktury` + `--nrKSeF` argument |
+| **Author** | Seller's full name or company name | `Podmiot1.DaneIdentyfikacyjne` (FA_RR: issuing VAT taxpayer) |
+| **Keywords** | Comma-separated list of all tax/entity identifiers in the XML | NIP, NrVatUE, NrID, IDWewn, PESEL, NrEORI from all parties |
+| **Creator / Producer** | `ksef-pdf-generator/{version}` | Always reflects the version that generated the file |
+
+### Title examples
+
+| Invoice type | Title |
+|---|---|
+| Standard VAT invoice | `Faktura VAT 20260101-SE-1234567890-ABC` |
+| Correction invoice | `Faktura KOR 20260101-SE-1234567890-ABC` |
+| Advance invoice | `Faktura ZAL 20260101-SE-1234567890-ABC` |
+| Agricultural flat-rate invoice | `Faktura RR 20260101-SE-1234567890-ABC` |
+| Offline invoice (no KSeF number) | `Faktura VAT` |
+
+### Keywords field
+
+The keywords field contains all unique tax and entity identifiers found anywhere in the invoice XML, drawn from all parties:
+
+- **Podmiot1** (seller / issuing taxpayer): NIP, NrEORI
+- **Podmiot2** (buyer): NIP, NrVatUE, NrID, IDWewn, PESEL, NrEORI
+- **Podmiot3** (third parties): all identifier fields present
+- **PodmiotUpoważniony** (authorized entity): NIP, NrEORI
+
+Identifiers are deduplicated and joined with `, `. Non-identifier fields (company names, `BrakID` flags) are excluded.
+
+Example value: `1234567890, PL9876543210, DE123456789`
+
+### Creator / Producer field
+
+The **Creator** and **Producer** PDF metadata fields are both set to `ksef-pdf-generator/{version}`, where `{version}` is the version number from `package.json`. This replaces the previous default value of `pdfmake`.
+
+This is useful for:
+- identifying which tool and version produced a given PDF when filing bug reports
+- filtering PDFs by origin in document management or archiving systems
+
+### Practical use for PDF archiving
+
+PDF viewers (Adobe Acrobat, Windows Explorer, macOS Finder, Sumatra PDF) expose these metadata fields in the file properties dialog. Operating system search and indexing tools (Windows Search, macOS Spotlight) can search PDF metadata, making it possible to locate invoices by:
+
+- seller name (Author field)
+- KSeF reference number (Title field)
+- NIP or other tax identifier (Keywords field)
+- generating tool version (Creator field)
+
 ## Optional Configuration File
 
 You can define `parameters.ini`:
@@ -153,6 +207,15 @@ decimals = 3
 
 [currencyFormat]
 thousands_separator = true
+
+[i18n]
+language = en
+
+[technicalInfo]
+enabled = true
+generated_in = true
+app_version = true
+acquisition_date = true
 ```
 
 Behavior:
@@ -160,6 +223,35 @@ Behavior:
 - `numberFormat.decimals = 2` changes `12.3456` to `12,35`
 - `numberFormat.decimals = null` keeps legacy precision such as `12,3456`
 - `currencyFormat.thousands_separator = true` changes `10000000` to `10 000 000,00`
+- `i18n.language = en` generates English PDF labels
+- supported languages are `pl` and `en`
+- missing or invalid language falls back to `pl`
+- `technicalInfo.enabled = true` shows the final technical information section
+- `technicalInfo.generated_in = true` shows `Naglowek.SystemInfo` as `Wytworzona w` / `Produced in`
+- `technicalInfo.app_version = true` shows the generated-by application line and the PDF generator version line
+- `technicalInfo.acquisition_date = true` shows `AcquisitionDate` when the XML contains this field
+
+You can also override the language with the CLI argument:
+
+```batch
+bin\ksef-pdf-generator.exe -i assets\invoice.xml -o invoice.pdf -t invoice --language en
+```
+
+```bash
+node dist/cli.cjs --input assets/invoice.xml --output invoice.pdf --type invoice --language en
+```
+
+Or with an environment variable:
+
+```batch
+set KSEF_LANGUAGE=en
+```
+
+```bash
+export KSEF_LANGUAGE=en
+```
+
+Precedence is: CLI argument, then `parameters.ini`, then `KSEF_LANGUAGE`, then the default `pl`.
 
 ## Logging
 
@@ -191,9 +283,17 @@ import { promisify } from "util";
 
 const execPromise = promisify(exec);
 
+const ALLOWED_LANGUAGES = ["pl", "en"];
+
 async function generatePDF(inputPath, outputPath, type, options = {}) {
   let command = `./bin/ksef-pdf-generator.exe --input "${inputPath}" --output "${outputPath}" --type ${type}`;
 
+  if (options.language) {
+    if (!ALLOWED_LANGUAGES.includes(options.language)) {
+      throw new Error(`Invalid language: must be one of: ${ALLOWED_LANGUAGES.join(", ")}`);
+    }
+    command += ` --language "${options.language}"`;
+  }
   if (options.nrKSeF) {
     command += ` --nrKSeF "${options.nrKSeF}"`;
   }
@@ -218,6 +318,7 @@ async function generatePDF(inputPath, outputPath, type, options = {}) {
 }
 
 await generatePDF("assets/invoice.xml", "output/invoice.pdf", "invoice", {
+  language: "en",
   nrKSeF: "5265877635-20250808-9231003CA67B-BE",
   qrCode1: "https://ksef-test.mf.gov.pl/...",
   currencyThousandsSeparator: true,
@@ -243,12 +344,23 @@ public class KSefPdfGenerator
         string inputPath,
         string outputPath,
         string type,
+        string? language = null,
         string? nrKSeF = null,
         string? qrCode1 = null,
         bool currencyThousandsSeparator = false,
         bool simplifiedMode = false)
     {
         var arguments = $"--input \"{inputPath}\" --output \"{outputPath}\" --type {type}";
+
+        var validLanguages = new[] { "pl", "en" };
+        if (!string.IsNullOrEmpty(language))
+        {
+            if (!validLanguages.Contains(language))
+            {
+                throw new ArgumentException($"Invalid language: {language}. Must be 'pl' or 'en'.", nameof(language));
+            }
+            arguments += $" --language \"{language}\"";
+        }
 
         if (!string.IsNullOrEmpty(nrKSeF))
         {

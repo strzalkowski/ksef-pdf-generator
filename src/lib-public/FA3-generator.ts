@@ -23,8 +23,11 @@ import { AdditionalDataTypes } from './types/common.types';
 import { getSimplifiedPageSize, SIMPLIFIED_PAGE_MARGINS } from './utils/simplified-page-size';
 import { Position } from '../shared/enums/common.enum';
 import { applyRuntimeFormattingConfig, resetRuntimeFormattingConfig } from '../shared/formatting-config';
+import { generateWatermark } from '../shared/consts/watermark';
+import { generatePdfInfo } from '../shared/pdf-metadata';
+import i18n from 'i18next';
 
-pdfMake.vfs = pdfFonts;
+pdfMake.addVirtualFileSystem(pdfFonts);
 
 export function generateFA3(invoice: Faktura, additionalData: AdditionalDataTypes): TCreatedPdf {
 
@@ -34,10 +37,20 @@ export function generateFA3(invoice: Faktura, additionalData: AdditionalDataType
     const isKOR_RABAT: boolean =
       invoice.Fa?.RodzajFaktury?._text == TRodzajFaktury.KOR && hasValue(invoice.Fa?.OkresFaKorygowanej);
     const rabatOrRowsInvoice: Content = isKOR_RABAT ? generateRabat(invoice.Fa!) : generateWiersze(invoice.Fa!);
+    const technicalInformationContext = {
+      acquisitionDate: invoice.AcquisitionDate,
+    };
     const content: Content[] = additionalData?.simplifiedMode
       ? [
         ...generateNaglowek(invoice.Fa, additionalData, invoice.Zalacznik),
-        ...generateStopka(additionalData, invoice.Stopka, invoice.Naglowek, invoice.Fa?.WZ, invoice.Zalacznik),
+        ...generateStopka(
+          additionalData,
+          invoice.Stopka,
+          invoice.Naglowek,
+          invoice.Fa?.WZ,
+          invoice.Zalacznik,
+          technicalInformationContext
+        ),
       ]
       : [
         ...generateNaglowek(invoice.Fa, additionalData, invoice.Zalacznik),
@@ -59,14 +72,24 @@ export function generateFA3(invoice: Faktura, additionalData: AdditionalDataType
         generateRozliczenie(invoice.Fa?.Rozliczenie, invoice.Fa?.KodWaluty?._text ?? ''),
         generatePlatnosc(invoice.Fa?.Platnosc, invoice.Fa?.P_15),
         generateWarunkiTransakcji(invoice.Fa?.WarunkiTransakcji),
-        ...generateStopka(additionalData, invoice.Stopka, invoice.Naglowek, invoice.Fa?.WZ, invoice.Zalacznik),
+        ...generateStopka(
+          additionalData,
+          invoice.Stopka,
+          invoice.Naglowek,
+          invoice.Fa?.WZ,
+          invoice.Zalacznik,
+          technicalInformationContext
+        ),
       ];
+    const sellerName = invoice.Podmiot1?.DaneIdentyfikacyjne?.Nazwa?._text;
+
     const docDefinition: TDocumentDefinitions = {
-      watermark: additionalData?.watermark,
+      ...generateWatermark(additionalData?.watermark),
       content,
+      info: generatePdfInfo(invoice.Fa?.RodzajFaktury?._text, additionalData.nrKSeF, sellerName),
       footer: (currentPage, pageCount) => {
         return {
-          text: currentPage.toString() + ' z ' + pageCount,
+          text: i18n.t('invoice.footer.pageOf', { current: currentPage, total: pageCount }),
           alignment: Position.RIGHT,
           margin: [0, 0, 40, 0],
         };

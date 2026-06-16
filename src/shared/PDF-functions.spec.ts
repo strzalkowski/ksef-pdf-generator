@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   createLabelText,
+  createSection,
+  formatBankAccountNumber,
   formatText,
   generateLine,
   generateQRCode,
@@ -32,6 +34,7 @@ describe('formatText', () => {
     } else {
       process.env.KSEF_FORMAT_CURRENCY_THOUSANDS_SEPARATOR = currencyThousandsSeparatorEnv;
     }
+
   });
 
   it('returns empty string for null or undefined value', () => {
@@ -159,6 +162,42 @@ describe('formatText', () => {
       })
     );
   });
+
+  it('formats account number with bank account grouping', () => {
+    const content = formatText('12345678901234567890123456', FormatTyp.AccountNumber);
+
+    expect(content).toEqual(
+      expect.objectContaining({
+        text: '12 3456 7890 1234 5678 9012 3456',
+        style: FormatTyp.AccountNumber,
+      })
+    );
+  });
+
+});
+
+describe('formatBankAccountNumber', () => {
+  it('leaves short values unchanged', () => {
+    expect(formatBankAccountNumber('123456789012')).toBe('123456789012');
+  });
+
+  it('groups domestic bank account numbers after the first two characters', () => {
+    expect(formatBankAccountNumber('12345678901234567890123456')).toBe(
+      '12 3456 7890 1234 5678 9012 3456'
+    );
+  });
+
+  it('groups accounts starting with a letter or symbol from the beginning', () => {
+    expect(formatBankAccountNumber('PL61109010140000071219812874')).toBe(
+      'PL61 1090 1014 0000 0712 1981 2874'
+    );
+  });
+
+  it('preserves already formatted account numbers', () => {
+    expect(formatBankAccountNumber('  PL61 1090 1014 0000 0712 1981 2874  ')).toBe(
+      'PL61 1090 1014 0000 0712 1981 2874'
+    );
+  });
 });
 
 describe('hasValue', () => {
@@ -170,6 +209,12 @@ describe('hasValue', () => {
   it('returns true for string or object with _text', () => {
     expect(hasValue('val')).toBe(true);
     expect(hasValue({ _text: '123' })).toBe(true);
+  });
+
+  it('can treat primitive zero as empty while keeping XML zero values present', () => {
+    expect(hasValue(0)).toBe(true);
+    expect(hasValue(0, false)).toBe(false);
+    expect(hasValue({ _text: '0' }, false)).toBe(true);
   });
 });
 
@@ -210,6 +255,25 @@ describe('createLabelText', () => {
       typeof result2[0] === 'object' && 'text' in result2[0] && (result2[0] as any).text.length === 2
     ).toBe(true);
   });
+
+});
+
+describe('createSection', () => {
+  it('returns empty array when there is no content', () => {
+    expect(createSection([], true)).toEqual([]);
+    expect(createSection([], false, [0, 0, 0, 0])).toEqual([]);
+  });
+
+  it('wraps non-empty content with default margin', () => {
+    const result = createSection([{ text: 'value' }], false);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(
+      expect.objectContaining({
+        margin: [0, 0, 0, 8],
+      })
+    );
+  });
 });
 
 describe('generateQRCode', () => {
@@ -231,7 +295,7 @@ describe('generateQRCode', () => {
 });
 
 describe('getKraj', () => {
-  it('returns country name if code exists, else returns input code', () => {
+  it('returns country name translation if code exists, else returns input code', () => {
     expect(getKraj('PL')).toBe('Polska');
     expect(getKraj('XYZ')).toBe('XYZ');
   });

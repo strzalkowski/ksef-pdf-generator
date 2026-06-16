@@ -3,9 +3,17 @@ import * as path from 'path';
 import { PDFDocument } from 'pdf-lib';
 import type { Watermark } from 'pdfmake/interfaces';
 import { log, logError, VERBOSE, startSession, endSession, isPersistentLogEnabled, getLogFilePath } from './logger';
-import { parseArguments } from './args';
+import { parseArguments, SUPPORTED_LANGUAGES } from './args';
 import { initializeApp } from './init';
-import { applyConfigFromFile } from './config';
+import {
+  applyConfigFromFile,
+  parseBooleanConfigValue,
+  TECHNICAL_INFO_ENABLED_ENV,
+  TECHNICAL_INFO_GENERATED_IN_ENV,
+  TECHNICAL_INFO_APP_VERSION_ENV,
+  TECHNICAL_INFO_ACQUISITION_DATE_ENV,
+} from './config';
+import type { TechnicalInfoConfig } from '../lib-public/types/common.types';
 
 const LOG_FILE = process.env.KSEF_LOG_FILE || '';
 
@@ -27,6 +35,21 @@ export async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const technicalInfoConfig = getTechnicalInfoConfigFromEnvironment();
+
+  if (options.language) {
+    if ((SUPPORTED_LANGUAGES as readonly string[]).includes(options.language)) {
+      process.env.KSEF_LANGUAGE = options.language;
+    } else {
+      const existing = process.env.KSEF_LANGUAGE;
+      const keepNote = existing ? ` Keeping existing KSEF_LANGUAGE="${existing}".` : '';
+      const msg = `Invalid language "${options.language}". Supported: ${SUPPORTED_LANGUAGES.join(', ')}.${keepNote}`;
+      logError(msg);
+      console.error(`Error: ${msg}`);
+      process.exit(1);
+    }
+  }
+
   // Initialize the application (setup jsdom, load generator module)
   const generators = await initializeApp();
 
@@ -46,6 +69,8 @@ export async function main(): Promise<void> {
       simplifiedMode: options.simplifiedMode || null,
       mergePdf: options.mergePdf || null,
       useCurrencyThousandsSeparator: options.useCurrencyThousandsSeparator || null,
+      technicalInfo: technicalInfoConfig || null,
+      language: process.env.KSEF_LANGUAGE || null,
     },
     options.type,
     options.input,
@@ -152,6 +177,10 @@ export async function main(): Promise<void> {
         additionalData.useCurrencyThousandsSeparator = true;
         log('Using useCurrencyThousandsSeparator: true', 'debug');
       }
+      if (technicalInfoConfig) {
+        additionalData.technicalInfo = technicalInfoConfig;
+        log(`Using technicalInfo: ${JSON.stringify(technicalInfoConfig)}`, 'debug');
+      }
 
       log('Generating invoice PDF...', 'info');
       pdfBlob = await generators.generateInvoice(file, additionalData, 'blob');
@@ -239,6 +268,32 @@ async function mergePdfBuffers(first: Buffer, second: Buffer): Promise<Buffer> {
 
   const mergedBytes = await mergedPdf.save();
   return Buffer.from(mergedBytes);
+}
+
+function getTechnicalInfoConfigFromEnvironment(): TechnicalInfoConfig | undefined {
+  const technicalInfo: TechnicalInfoConfig = {};
+  const enabled = parseBooleanConfigValue(process.env[TECHNICAL_INFO_ENABLED_ENV]);
+  const showGeneratedIn = parseBooleanConfigValue(process.env[TECHNICAL_INFO_GENERATED_IN_ENV]);
+  const showAppVersion = parseBooleanConfigValue(process.env[TECHNICAL_INFO_APP_VERSION_ENV]);
+  const showAcquisitionDate = parseBooleanConfigValue(process.env[TECHNICAL_INFO_ACQUISITION_DATE_ENV]);
+
+  if (enabled !== undefined) {
+    technicalInfo.enabled = enabled;
+  }
+
+  if (showGeneratedIn !== undefined) {
+    technicalInfo.showGeneratedIn = showGeneratedIn;
+  }
+
+  if (showAppVersion !== undefined) {
+    technicalInfo.showAppVersion = showAppVersion;
+  }
+
+  if (showAcquisitionDate !== undefined) {
+    technicalInfo.showAcquisitionDate = showAcquisitionDate;
+  }
+
+  return Object.keys(technicalInfo).length ? technicalInfo : undefined;
 }
 
 async function convertBlobToBuffer(pdfBlob: any): Promise<Buffer> {

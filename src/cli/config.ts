@@ -5,6 +5,12 @@ import { log } from './logger';
 const CONFIG_FILE_NAME = 'parameters.ini';
 const NUMBER_DECIMALS_ENV = 'KSEF_FORMAT_NUMBER_DECIMALS';
 const CURRENCY_THOUSANDS_SEPARATOR_ENV = 'KSEF_FORMAT_CURRENCY_THOUSANDS_SEPARATOR';
+const LANGUAGE_ENV = 'KSEF_LANGUAGE';
+export const TECHNICAL_INFO_ENABLED_ENV = 'KSEF_TECHNICAL_INFO_ENABLED';
+export const TECHNICAL_INFO_GENERATED_IN_ENV = 'KSEF_TECHNICAL_INFO_GENERATED_IN';
+export const TECHNICAL_INFO_APP_VERSION_ENV = 'KSEF_TECHNICAL_INFO_APP_VERSION';
+export const TECHNICAL_INFO_ACQUISITION_DATE_ENV = 'KSEF_TECHNICAL_INFO_ACQUISITION_DATE';
+const SUPPORTED_LANGUAGES = ['pl', 'en'] as const;
 
 type AppConfig = {
   numberFormat?: {
@@ -13,7 +19,33 @@ type AppConfig = {
   currencyFormat?: {
     thousandsSeparator?: boolean;
   };
+  i18n?: {
+    language?: (typeof SUPPORTED_LANGUAGES)[number];
+  };
+  technicalInfo?: {
+    enabled?: boolean;
+    showGeneratedIn?: boolean;
+    showAppVersion?: boolean;
+    showAcquisitionDate?: boolean;
+  };
 };
+
+export function parseBooleanConfigValue(value: string | undefined): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return undefined;
+}
 
 function isPackagedRuntime(): boolean {
   return !!((process as any).pkg || (process as any).isSEA);
@@ -106,13 +138,9 @@ function parseIniConfig(content: string, filePath: string): AppConfig {
         continue;
       }
 
-      if (['1', 'true', 'yes', 'on'].includes(value.toLowerCase())) {
-        result.currencyFormat = { thousandsSeparator: true };
-        continue;
-      }
-
-      if (['0', 'false', 'no', 'off'].includes(value.toLowerCase())) {
-        result.currencyFormat = { thousandsSeparator: false };
+      const parsed = parseBooleanConfigValue(value);
+      if (parsed !== undefined) {
+        result.currencyFormat = { thousandsSeparator: parsed };
         continue;
       }
 
@@ -120,6 +148,57 @@ function parseIniConfig(content: string, filePath: string): AppConfig {
         `Invalid "currencyFormat.thousands_separator" in ${filePath}:${lineNumber}. Expected boolean true/false. Using default behavior.`,
         'error'
       );
+    }
+
+    if (section === 'i18n' && key === 'language') {
+      if (!value) {
+        log(
+          `Invalid "i18n.language" in ${filePath}:${lineNumber}. Expected one of: ${SUPPORTED_LANGUAGES.join(', ')}. Using default behavior.`,
+          'error'
+        );
+        continue;
+      }
+
+      const normalizedLanguage = value.toLowerCase();
+
+      if (SUPPORTED_LANGUAGES.includes(normalizedLanguage as (typeof SUPPORTED_LANGUAGES)[number])) {
+        result.i18n = { language: normalizedLanguage as (typeof SUPPORTED_LANGUAGES)[number] };
+        continue;
+      }
+
+      log(
+        `Invalid "i18n.language" in ${filePath}:${lineNumber}. Expected one of: ${SUPPORTED_LANGUAGES.join(', ')}. Using default behavior.`,
+        'error'
+      );
+    }
+
+    if (section === 'technicalinfo') {
+      if (key === 'enabled' || key === 'generated_in' || key === 'app_version' || key === 'acquisition_date') {
+        if (!value) {
+          log(
+            `Invalid "technicalInfo.${key}" in ${filePath}:${lineNumber}. Expected boolean true/false. Using default behavior.`,
+            'error'
+          );
+          continue;
+        }
+
+        const parsed = parseBooleanConfigValue(value);
+        if (parsed === undefined) {
+          log(
+            `Invalid "technicalInfo.${key}" in ${filePath}:${lineNumber}. Expected boolean true/false. Using default behavior.`,
+            'error'
+          );
+          continue;
+        }
+
+        result.technicalInfo = {
+          ...result.technicalInfo,
+          ...(key === 'enabled' ? { enabled: parsed } : {}),
+          ...(key === 'generated_in' ? { showGeneratedIn: parsed } : {}),
+          ...(key === 'app_version' ? { showAppVersion: parsed } : {}),
+          ...(key === 'acquisition_date' ? { showAcquisitionDate: parsed } : {}),
+        };
+      }
     }
   }
 
@@ -165,6 +244,54 @@ function applyCurrencyFormatConfig(config: AppConfig, filePath: string): void {
   );
 }
 
+function applyI18nConfig(config: AppConfig, filePath: string): void {
+  const language = config.i18n?.language;
+
+  if (!language) {
+    return;
+  }
+
+  process.env[LANGUAGE_ENV] = language;
+  log(`Config loaded from ${filePath}: i18n.language=${language}`, 'info');
+}
+
+function applyTechnicalInfoConfig(config: AppConfig, filePath: string): void {
+  const technicalInfo = config.technicalInfo;
+
+  if (!technicalInfo) {
+    return;
+  }
+
+  if (technicalInfo.enabled !== undefined) {
+    process.env[TECHNICAL_INFO_ENABLED_ENV] = String(technicalInfo.enabled);
+    log(`Config loaded from ${filePath}: technicalInfo.enabled=${technicalInfo.enabled}`, 'info');
+  }
+
+  if (technicalInfo.showGeneratedIn !== undefined) {
+    process.env[TECHNICAL_INFO_GENERATED_IN_ENV] = String(technicalInfo.showGeneratedIn);
+    log(
+      `Config loaded from ${filePath}: technicalInfo.generated_in=${technicalInfo.showGeneratedIn}`,
+      'info'
+    );
+  }
+
+  if (technicalInfo.showAppVersion !== undefined) {
+    process.env[TECHNICAL_INFO_APP_VERSION_ENV] = String(technicalInfo.showAppVersion);
+    log(
+      `Config loaded from ${filePath}: technicalInfo.app_version=${technicalInfo.showAppVersion}`,
+      'info'
+    );
+  }
+
+  if (technicalInfo.showAcquisitionDate !== undefined) {
+    process.env[TECHNICAL_INFO_ACQUISITION_DATE_ENV] = String(technicalInfo.showAcquisitionDate);
+    log(
+      `Config loaded from ${filePath}: technicalInfo.acquisition_date=${technicalInfo.showAcquisitionDate}`,
+      'info'
+    );
+  }
+}
+
 export function applyConfigFromFile(): void {
   const configPath = getConfigSearchPaths().find((p: string): boolean => fs.existsSync(p));
 
@@ -180,4 +307,6 @@ export function applyConfigFromFile(): void {
 
   applyNumberFormatConfig(config, configPath);
   applyCurrencyFormatConfig(config, configPath);
+  applyI18nConfig(config, configPath);
+  applyTechnicalInfoConfig(config, configPath);
 }
